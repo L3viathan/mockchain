@@ -1,13 +1,12 @@
 """A single node to mine blocks."""
+import sys
 import json
+import random
 from collections import deque
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from lib import GENESIS, verify_block, try_block, _PARENT_HASH, _HASH, _INFO
 
-transaction_queue = deque()
-block_queue = deque()
-blockchain = [GENESIS]
 SPOOL_DIR = "/var/spool/blockchain/"
 
 
@@ -25,65 +24,76 @@ def verify_blockchain(chain):
 
 class SpoolHandler(FileSystemEventHandler):
     """Event handler"""
+    def __init__(self, miner):
+        self.miner = miner
+
     def on_created(self, event):
         filename = event.src_path
         if filename.endswith(".block"):
             with open(filename) as f:
                 data = json.load(f)
-                block_queue.append(data)
+                self.miner.block_queue.append(data)
         elif filename.endswith(".transaction"):
             with open(filename) as f:
                 data = f.read()
-                transaction_queue.append(data)
+                self.miner.transaction_queue.append(data)
 
+class Miner:
+    """A miner."""
+    def __init__(self, name=str(random.randint(1, 1000))):
+        self.name = name
+        self.transaction_queue = deque()
+        self.block_queue = deque()
+        self.blockchain = [GENESIS]
 
-def send_blockchain():
-    """Send a mined block into spool (sending the entire blockchain)"""
-    with open(SPOOL_DIR + blockchain[-1][_HASH] + ".block", "w") as f:
-        json.dump([list(block) for block in blockchain], f)
+    def run(self):
+        """Run forever, trying to find blocks"""
+        while True:
+            if self.block_queue:
+                self.handle_blocks()
+            elif self.transaction_queue:
+                block = try_block(
+                    self.blockchain[-1],
+                    self.transaction_queue[0],
+                )
+                if block:
+                    print("I found it!")
+                    self.blockchain.append(block)
+                    self.send_blockchain()
+                    self.transaction_queue.popleft()
+            else:
+                block = try_block(self.blockchain[-1], "gimme money")
+                if block:
+                    print("I found it!")
+                    self.blockchain.append(block)
+                    self.send_blockchain()
 
+    def send_blockchain(self):
+        """Send a mined block into spool (sending the entire blockchain)"""
+        with open(SPOOL_DIR + self.blockchain[-1][_HASH] + ".block", "w") as f:
+            json.dump(self.blockchain, f)
 
-def handle_blocks():
-    """Empty the block queue, appending valid blocks"""
-    global blockchain
-    while block_queue:
-        chain = block_queue.pop()
-        valid = verify_blockchain(chain)
-        if valid:
-            if valid > len(blockchain):
-                blockchain = chain
-                for block in blockchain:
-                    if block[_INFO] in transaction_queue:
-                        transaction_queue.remove(block[_INFO])
-            print(blockchain)
-        else:
-            print("Invalid blockchain found")
-            print(chain)
-            print(blockchain)
-
-
-def run():
-    """Run forever, trying to find blocks"""
-    while True:
-        if block_queue:
-            handle_blocks()
-        elif transaction_queue:
-            block = try_block(blockchain[-1], transaction_queue[0])
-            if block:
-                print("I found it!")
-                blockchain.append(block)
-                send_blockchain()
-                transaction_queue.popleft()
-        else:
-            block = try_block(blockchain[-1], "gimme money")
-            if block:
-                print("I found it!")
-                blockchain.append(block)
-                send_blockchain()
+    def handle_blocks(self):
+        """Empty the block queue, appending valid blocks"""
+        while self.block_queue:
+            chain = self.block_queue.pop()
+            valid = verify_blockchain(chain)
+            if valid:
+                if valid > len(self.blockchain):
+                    self.blockchain = chain
+                    for block in self.blockchain:
+                        if block[_INFO] in self.transaction_queue:
+                            self.transaction_queue.remove(block[_INFO])
+                print(self.blockchain)
+            else:
+                print("Invalid blockchain found")
+                print(chain)
+                print(self.blockchain)
 
 
 if __name__ == '__main__':
+    miner = Miner(sys.argv[1])
     observer = Observer()
-    observer.schedule(SpoolHandler(), SPOOL_DIR)
+    observer.schedule(SpoolHandler(miner), SPOOL_DIR)
     observer.start()
-    run()
+    miner.run()
