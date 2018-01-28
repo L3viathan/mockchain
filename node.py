@@ -2,10 +2,18 @@
 import sys
 import json
 import random
-from collections import deque
+from collections import deque, Counter
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from lib import GENESIS, verify_block, try_block, _PARENT_HASH, _HASH, _INFO
+from lib import (
+    GENESIS,
+    verify_block,
+    try_block,
+    _PARENT_HASH,
+    _HASH,
+    _INFO,
+    REWARD,
+)
 
 SPOOL_DIR = "/var/spool/blockchain/"
 
@@ -38,6 +46,7 @@ class SpoolHandler(FileSystemEventHandler):
                 data = f.read()
                 self.miner.transaction_queue.append(data)
 
+
 class Miner:
     """A miner."""
     def __init__(self, name=str(random.randint(1, 1000))):
@@ -45,28 +54,61 @@ class Miner:
         self.transaction_queue = deque()
         self.block_queue = deque()
         self.blockchain = [GENESIS]
+        self.wallet = Counter()
+        self.transactions = set()
 
     def run(self):
         """Run forever, trying to find blocks"""
         while True:
             if self.block_queue:
                 self.handle_blocks()
-            elif self.transaction_queue:
-                block = try_block(
-                    self.blockchain[-1],
-                    self.transaction_queue[0],
-                )
-                if block:
-                    print("I found it!")
-                    self.blockchain.append(block)
-                    self.send_blockchain()
-                    self.transaction_queue.popleft()
+
+            if self.transaction_queue:
+                transaction = self.transaction_queue[0]
             else:
-                block = try_block(self.blockchain[-1], "gimme money")
-                if block:
-                    print("I found it!")
-                    self.blockchain.append(block)
-                    self.send_blockchain()
+                transaction = ""
+
+            transaction += "\n>{}>{}>{}\n".format(REWARD, self.name, random.random())
+            block = try_block(
+                self.blockchain[-1],
+                transaction,
+            )
+            if block:
+                print("Found a block:", block[_HASH])
+                self.blockchain.append(block)
+                self.send_blockchain()
+                self.recalculate_wallet()
+
+                if self.transaction_queue:
+                    self.transaction_queue.popleft()
+
+    def recalculate_wallet(self):
+        self.wallet = Counter()
+        self.transactions = set()
+        for block in self.blockchain:
+            for src, amount, tgt, extra in self.parse_transactions(block[_INFO]):
+                if hash((src, amount, tgt, extra)) in self.transactions:
+                    print("Skipping transaction")
+                    continue
+                if src:
+                    self.wallet[src] -= amount
+                self.wallet[tgt] += amount
+                self.transactions.add(hash((src, amount, tgt, extra)))
+
+
+    def parse_transactions(self, transaction):
+        "sarnthil>100>L3viathan>extra"
+        got_reward = False
+        for line in transaction.split("\n"):
+            try:
+                source, amount, target, extra = line.split(">")
+            except ValueError:
+                continue
+            amount = int(amount)
+            if not (source or got_reward) and REWARD == amount:
+                yield None, REWARD, target, extra
+            elif self.wallet[source] >= amount:
+                yield source, amount, target, extra
 
     def send_blockchain(self):
         """Send a mined block into spool (sending the entire blockchain)"""
@@ -84,11 +126,18 @@ class Miner:
                     for block in self.blockchain:
                         if block[_INFO] in self.transaction_queue:
                             self.transaction_queue.remove(block[_INFO])
-                print(self.blockchain)
+                    self.recalculate_wallet()
+                self.print_wallet()
             else:
                 print("Invalid blockchain found")
                 print(chain)
                 print(self.blockchain)
+
+    def print_wallet(self):
+        print("Wallet:")
+        for who in self.wallet:
+            print(who, self.wallet[who], sep="\t")
+        print()
 
 
 if __name__ == '__main__':

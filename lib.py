@@ -5,6 +5,7 @@ import random
 from hashlib import sha256
 
 _PARENT_HASH, _INFO, _FILLER, _HASH = range(4)
+REWARD = 10
 
 N = 5
 
