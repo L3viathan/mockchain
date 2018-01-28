@@ -7,27 +7,14 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from lib import (
     GENESIS,
-    verify_block,
+    verify_blockchain,
     try_block,
-    _PARENT_HASH,
     _HASH,
     _INFO,
     REWARD,
 )
 
 SPOOL_DIR = "/var/spool/blockchain/"
-
-
-def verify_blockchain(chain):
-    """Verify that a blockchain is correct"""
-    if chain[0] != GENESIS:
-        return False
-    for i in range(1, len(chain)-1):
-        if not verify_block(chain[i]):
-            return False
-        if chain[i][_PARENT_HASH] != chain[i-1][_HASH]:
-            return False
-    return len(chain)
 
 
 class SpoolHandler(FileSystemEventHandler):

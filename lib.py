@@ -44,6 +44,18 @@ def find_block(parent, info):
             return block
 
 
+def verify_blockchain(chain):
+    """Verify that a blockchain is correct"""
+    if chain[0] != GENESIS:
+        return False
+    for i in range(1, len(chain)-1):
+        if not verify_block(chain[i]):
+            return False
+        if chain[i][_PARENT_HASH] != chain[i-1][_HASH]:
+            return False
+    return len(chain)
+
+
 def verify_block(block):
     """Verify a block (make sure the hash matches)"""
     if not block[_HASH].startswith("0"*N):
