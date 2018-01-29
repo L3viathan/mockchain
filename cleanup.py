@@ -11,7 +11,7 @@ class CleanupHandler(FileSystemEventHandler):
     """Event handler"""
     def on_created(self, event):
         filename = event.src_path
-        sleep(5)
+        sleep(1)
         os.remove(filename)
 
 

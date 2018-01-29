@@ -4,7 +4,6 @@ import json
 import random
 from collections import deque, Counter
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from lib import (
     GENESIS,
     verify_blockchain,
@@ -12,26 +11,10 @@ from lib import (
     _HASH,
     _INFO,
     REWARD,
+    SpoolHandler,
 )
 
 SPOOL_DIR = "/var/spool/blockchain/"
-
-
-class SpoolHandler(FileSystemEventHandler):
-    """Event handler"""
-    def __init__(self, miner):
-        self.miner = miner
-
-    def on_created(self, event):
-        filename = event.src_path
-        if filename.endswith(".block"):
-            with open(filename) as f:
-                data = json.load(f)
-                self.miner.block_queue.append(data)
-        elif filename.endswith(".transaction"):
-            with open(filename) as f:
-                data = f.read()
-                self.miner.transaction_queue.append(data)
 
 
 class Miner:
@@ -121,10 +104,11 @@ class Miner:
                 print(self.blockchain)
 
     def print_wallet(self):
-        print("Wallet:")
-        for who in self.wallet:
-            print(who, self.wallet[who], sep="\t")
-        print()
+        pass
+
+    def print_blockchain(self):
+        for i, block in enumerate(self.blockchain):
+            print(i, block)
 
 
 if __name__ == '__main__':
@@ -132,4 +116,9 @@ if __name__ == '__main__':
     observer = Observer()
     observer.schedule(SpoolHandler(miner), SPOOL_DIR)
     observer.start()
-    miner.run()
+    try:
+        miner.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        miner.print_blockchain()

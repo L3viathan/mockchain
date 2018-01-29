@@ -2,12 +2,31 @@
 Common functions
 """
 import random
+import json
 from hashlib import sha256
+from watchdog.events import FileSystemEventHandler
 
 _PARENT_HASH, _INFO, _FILLER, _HASH = range(4)
 REWARD = 10
 
 N = 5
+
+
+class SpoolHandler(FileSystemEventHandler):
+    """Event handler"""
+    def __init__(self, miner):
+        self.miner = miner
+
+    def on_created(self, event):
+        filename = event.src_path
+        if filename.endswith(".block"):
+            with open(filename) as f:
+                data = json.load(f)
+                self.miner.block_queue.append(data)
+        elif filename.endswith(".transaction"):
+            with open(filename) as f:
+                data = f.read()
+                self.miner.transaction_queue.append(data)
 
 
 def block_hash(*args):
